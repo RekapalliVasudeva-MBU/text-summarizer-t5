@@ -1,11 +1,10 @@
 import os
 import re
 import torch
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import T5ForConditionalGeneration, T5Tokenizer
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 
 # ============================================
 # APP SETUP
@@ -13,7 +12,6 @@ from fastapi.responses import HTMLResponse
 app = FastAPI(title="Text Summarizer App", description="Text Summarization using T5", version="1.0")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates = Jinja2Templates(directory=BASE_DIR)
 
 # ============================================
 # LOAD MODEL
@@ -100,8 +98,8 @@ async def summarize(dialogue_input: DialogueInput):
     return {"summary": summary}
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def home():
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
 
 @app.get("/health")
 async def health():
