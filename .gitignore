@@ -3,7 +3,8 @@ __pycache__/
 .env
 venv/
 .venv/
-saved_summary_model/
 *.egg-info/
 dist/
 build/
+.vscode/
+saved_summary_model/
