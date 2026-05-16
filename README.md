@@ -10,8 +10,27 @@ pip install -r requirements.txt
 ```
 
 ### 2. Run the App
+
+**Option A: Use local model (default)**
 ```bash
 python app.py
+```
+
+**Option B: Set custom model path**
+```bash
+# Windows
+set MODEL_PATH=C:\path\to\your\model
+python app.py
+
+# Linux/Mac
+export MODEL_PATH=/path/to/your/model
+python app.py
+```
+
+**Option C: Download from HuggingFace Hub (auto-fallback)**
+If no local model is found, the app automatically downloads from:
+```
+ValtareVasu/text_summarizer
 ```
 
 ### 3. Open Browser

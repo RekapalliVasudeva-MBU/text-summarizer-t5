@@ -106,3 +106,12 @@ async def home(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "healthy", "model_loaded": model is not None}
+
+
+# ============================================
+# START SERVER
+# ============================================
+if __name__ == "__main__":
+    import uvicorn
+    print("Starting server at http://localhost:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
