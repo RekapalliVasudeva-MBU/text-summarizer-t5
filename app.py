@@ -11,7 +11,8 @@ app = FastAPI(title="Text Summarizer App", description="Text Summarization using
 # Use HuggingFace Inference API (free, no model loading on Render)
 HF_API_URL = "https://api-inference.huggingface.co/models/ValtareVasu/text_summarizer"
 
-templates = Jinja2Templates(directory=os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=BASE_DIR)
 
 class DialogueInput(BaseModel):
     dialogue: str
@@ -23,30 +24,32 @@ def clean_data(text):
     text = text.strip().lower()
     return text
 
-def summarize_dialogue(dialogue: str) -> str:
+async def summarize_dialogue(dialogue: str) -> str:
     dialogue = clean_data(dialogue)
     
     # Add T5 prefix for summarization
     input_text = "summarize: " + dialogue
     
-    # Call HuggingFace Inference API
-    response = httpx.post(
-        HF_API_URL,
-        json={"inputs": input_text, "parameters": {"max_length": 150, "num_beams": 4}},
-        timeout=30.0
-    )
-    
-    if response.status_code == 200:
-        result = response.json()
-        if isinstance(result, list) and len(result) > 0:
-            return result[0].get("summary_text", "")
-        return str(result)
-    else:
-        return f"Error: {response.status_code} - {response.text}"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                HF_API_URL,
+                json={"inputs": input_text, "parameters": {"max_length": 150, "num_beams": 4}}
+            )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("summary_text", "")
+            return str(result)
+        else:
+            return f"Error: {response.status_code}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 @app.post("/summarize/")
 async def summarize(dialogue_input: DialogueInput):
-    summary = summarize_dialogue(dialogue_input.dialogue)
+    summary = await summarize_dialogue(dialogue_input.dialogue)
     return {"summary": summary}
 
 @app.get("/", response_class=HTMLResponse)
