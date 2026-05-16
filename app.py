@@ -18,12 +18,24 @@ templates = Jinja2Templates(directory=BASE_DIR)
 # ============================================
 # LOAD MODEL
 # ============================================
-# Use your trained model from HuggingFace Hub
-HF_MODEL = "ValtareVasu/text_summarizer"
+# Use local model from saved_summary_model folder
+MODEL_PATH = os.path.join(BASE_DIR, "saved_summary_model")
 
-print("Loading model from HuggingFace Hub...")
-model = T5ForConditionalGeneration.from_pretrained(HF_MODEL)
-tokenizer = T5Tokenizer.from_pretrained(HF_MODEL)
+if os.path.exists(MODEL_PATH) and os.path.exists(os.path.join(MODEL_PATH, "model.safetensors")):
+    print("Loading model from local path:", MODEL_PATH)
+    model = T5ForConditionalGeneration.from_pretrained(MODEL_PATH)
+    tokenizer = T5Tokenizer.from_pretrained(MODEL_PATH)
+else:
+    # Fallback: download from HuggingFace Hub
+    print("Local model not found. Downloading from HuggingFace Hub...")
+    HF_MODEL = "ValtareVasu/text_summarizer"
+    model = T5ForConditionalGeneration.from_pretrained(HF_MODEL)
+    tokenizer = T5Tokenizer.from_pretrained(HF_MODEL)
+    # Save locally for next time
+    os.makedirs(MODEL_PATH, exist_ok=True)
+    model.save_pretrained(MODEL_PATH)
+    tokenizer.save_pretrained(MODEL_PATH)
+    print("Model saved locally for future use.")
 
 # Device selection (FIXED: typo is_availanle -> is_available)
 if torch.cuda.is_available():
