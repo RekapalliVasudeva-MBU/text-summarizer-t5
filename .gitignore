@@ -7,4 +7,3 @@ venv/
 dist/
 build/
 .vscode/
-saved_summary_model/
