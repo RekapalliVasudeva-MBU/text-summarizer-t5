@@ -1,23 +1,31 @@
 import os
 import re
 import torch
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
 from transformers import T5ForConditionalGeneration, T5Tokenizer
-import gradio as gr
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 
 # ============================================
-# CONFIGURATION
+# APP SETUP
 # ============================================
-# Your trained model from HuggingFace Hub
-MODEL_NAME = "ValtareVasu/text-summarizer"
+app = FastAPI(title="Text Summarizer App", description="Text Summarization using T5", version="1.0")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=BASE_DIR)
 
 # ============================================
 # LOAD MODEL
 # ============================================
-print("Loading model...")
-model = T5ForConditionalGeneration.from_pretrained(MODEL_NAME)
-tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
+# Use your trained model from HuggingFace Hub
+HF_MODEL = "ValtareVasu/text_summarizer"
 
-# Use GPU if available, else CPU
+print("Loading model from HuggingFace Hub...")
+model = T5ForConditionalGeneration.from_pretrained(HF_MODEL)
+tokenizer = T5Tokenizer.from_pretrained(HF_MODEL)
+
+# Device selection (FIXED: typo is_availanle -> is_available)
 if torch.cuda.is_available():
     device = torch.device("cuda")
     print("Using GPU:", torch.cuda.get_device_name(0))
@@ -26,37 +34,41 @@ else:
     print("Using CPU")
 
 model.to(device)
-model.eval()
+model.eval()  # Evaluation mode for less memory usage
 print("Model loaded successfully!")
+
+# ============================================
+# INPUT MODEL
+# ============================================
+class DialogueInput(BaseModel):
+    dialogue: str
 
 # ============================================
 # TEXT CLEANING
 # ============================================
-def clean_text(text):
+def clean_data(text):
     text = re.sub(r"\r\n", " ", text)
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"<.*?>", " ", text)
-    text = text.strip()
+    text = text.strip().lower()
     return text
 
 # ============================================
-# SUMMARIZATION FUNCTION
+# SUMMARIZATION
 # ============================================
-def summarize(text):
-    if not text or not text.strip():
-        return "⚠️ Please enter some text to summarize."
-
-    text = clean_text(text)
+def summarize_dialogue(dialogue: str) -> str:
+    dialogue = clean_data(dialogue)
 
     inputs = tokenizer(
-        text,
+        dialogue,
+        padding="max_length",
         max_length=512,
         truncation=True,
         return_tensors="pt"
     ).to(device)
 
-    with torch.no_grad():
-        outputs = model.generate(
+    with torch.no_grad():  # Saves memory during inference
+        targets = model.generate(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             max_length=150,
@@ -64,47 +76,21 @@ def summarize(text):
             early_stopping=True
         )
 
-    summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    if not summary.strip():
-        return "⚠️ Could not generate summary. Try with longer text."
-
+    summary = tokenizer.decode(targets[0], skip_special_tokens=True)
     return summary
 
 # ============================================
-# GRADIO UI
+# API ENDPOINTS
 # ============================================
-demo = gr.Interface(
-    fn=summarize,
-    inputs=gr.Textbox(
-        lines=10,
-        placeholder="Paste your text here...",
-        label="📝 Input Text"
-    ),
-    outputs=gr.Textbox(
-        lines=5,
-        label="📋 Summary"
-    ),
-    title="🤖 AI Text Summarizer",
-    description="Paste any long text and get a concise summary using fine-tuned T5 model.",
-    examples=[
-        ["The Eiffel Tower is 324 metres tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres on each side. During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world."],
-        ["Machine learning is a subset of artificial intelligence that provides systems the ability to automatically learn and improve from experience without being explicitly programmed. Machine learning focuses on the development of computer programs that can access data and use it to learn for themselves."],
-    ],
-    theme=gr.themes.Soft(),
-    allow_flagging="never"
-)
+@app.post("/summarize/")
+async def summarize(dialogue_input: DialogueInput):
+    summary = summarize_dialogue(dialogue_input.dialogue)
+    return {"summary": summary}
 
-# ============================================
-# RUN
-# ============================================
-if __name__ == "__main__":
-    print("\n" + "="*50)
-    print("🚀 Starting AI Text Summarizer...")
-    print("="*50)
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
-        show_error=True
-    )
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "model_loaded": model is not None}
