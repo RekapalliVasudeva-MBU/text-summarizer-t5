@@ -1,30 +1,20 @@
 import os
+import httpx
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from transformers import T5ForConditionalGeneration, T5Tokenizer
-import torch
 import re 
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="Text Summarizer App", description="Text Summarization using T5", version="1.0")
 
-# Load model from HuggingFace Hub
-HF_MODEL = "ValtareVasu/text_summarizer"
-print("Loading model from HuggingFace Hub:", HF_MODEL)
-model = T5ForConditionalGeneration.from_pretrained(HF_MODEL)
-tokenizer = T5Tokenizer.from_pretrained(HF_MODEL)
-print("Model loaded successfully!")
-
-# device - CPU only for Render (no GPU on free tier)
-device = torch.device("cpu")
-model.to(device)
-print("Using device:", device)
+# Use HuggingFace Inference API (free, no model loading on Render)
+HF_API_URL = "https://api-inference.huggingface.co/models/ValtareVasu/text_summarizer"
 
 templates = Jinja2Templates(directory=os.path.dirname(os.path.abspath(__file__)))
 
 class DialogueInput(BaseModel):
-     dialogue: str
+    dialogue: str
 
 def clean_data(text):
     text = re.sub(r"\r\n", " ", text)
@@ -35,22 +25,24 @@ def clean_data(text):
 
 def summarize_dialogue(dialogue: str) -> str:
     dialogue = clean_data(dialogue)
-    inputs = tokenizer(
-        dialogue,
-        padding="max_length",
-        max_length=512,
-        truncation=True,
-        return_tensors="pt"
-    ).to(device)
-    targets = model.generate(
-        input_ids=inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=150,
-        num_beams=4,
-        early_stopping=True
+    
+    # Add T5 prefix for summarization
+    input_text = "summarize: " + dialogue
+    
+    # Call HuggingFace Inference API
+    response = httpx.post(
+        HF_API_URL,
+        json={"inputs": input_text, "parameters": {"max_length": 150, "num_beams": 4}},
+        timeout=30.0
     )
-    summary = tokenizer.decode(targets[0], skip_special_tokens=True)
-    return summary
+    
+    if response.status_code == 200:
+        result = response.json()
+        if isinstance(result, list) and len(result) > 0:
+            return result[0].get("summary_text", "")
+        return str(result)
+    else:
+        return f"Error: {response.status_code} - {response.text}"
 
 @app.post("/summarize/")
 async def summarize(dialogue_input: DialogueInput):
@@ -63,4 +55,4 @@ async def home(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "model_loaded": model is not None}
+    return {"status": "healthy"}
